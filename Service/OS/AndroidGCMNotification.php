@@ -11,8 +11,7 @@ use Buzz\Browser,
     Buzz\Client\Curl,
     Buzz\Client\MultiCurl;
 
-class AndroidGCMNotification implements OSNotificationServiceInterface
-{
+class AndroidGCMNotification implements OSNotificationServiceInterface {
 
     /**
      * Whether or not to use the dry run GCM
@@ -73,8 +72,7 @@ class AndroidGCMNotification implements OSNotificationServiceInterface
      * @param AbstractCurl $client (optional)
      * @param bool         $dryRun
      */
-    public function __construct($apiKey, $useMultiCurl, $timeout, $logger, AbstractCurl $client = null, $dryRun = false)
-    {
+    public function __construct($apiKey, $useMultiCurl, $timeout, $logger, AbstractCurl $client = null, $dryRun = false) {
         $this->useDryRun = $dryRun;
         $this->apiKey = $apiKey;
         if (!$client) {
@@ -94,8 +92,7 @@ class AndroidGCMNotification implements OSNotificationServiceInterface
      * @throws \RMS\PushNotificationsBundle\Exception\InvalidMessageTypeException
      * @return bool
      */
-    public function send(MessageInterface $message)
-    {
+    public function send(MessageInterface $message) {
         if (!$message instanceof AndroidMessage) {
             throw new InvalidMessageTypeException(sprintf("Message type '%s' not supported by GCM", get_class($message)));
         }
@@ -108,8 +105,7 @@ class AndroidGCMNotification implements OSNotificationServiceInterface
             "Content-Type: application/json",
         );
         $data = array_merge(
-            $message->getGCMOptions(),
-            array("data" => $message->getData())
+                $message->getGCMOptions(), array("data" => $message->getData())
         );
 
         if ($this->useDryRun) {
@@ -129,6 +125,8 @@ class AndroidGCMNotification implements OSNotificationServiceInterface
 
             foreach ($chunks as $registrationIDs) {
                 $data['registration_ids'] = $registrationIDs;
+                $data['notification']['body'] = $message->getData();
+                $data['priority'] = 'high';
                 $this->responses[] = $this->browser->post($this->apiURL, $headers, json_encode($data));
             }
         }
@@ -164,8 +162,8 @@ class AndroidGCMNotification implements OSNotificationServiceInterface
      *
      * @return array
      */
-    public function getResponses()
-    {
+    public function getResponses() {
         return $this->responses;
     }
+
 }
