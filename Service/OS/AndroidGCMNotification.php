@@ -3,13 +3,13 @@
 namespace RMS\PushNotificationsBundle\Service\OS;
 
 use Psr\Log\LoggerInterface;
-use RMS\PushNotificationsBundle\Exception\InvalidMessageTypeException,
-    RMS\PushNotificationsBundle\Message\AndroidMessage,
-    RMS\PushNotificationsBundle\Message\MessageInterface;
-use Buzz\Browser,
-    Buzz\Client\AbstractCurl,
-    Buzz\Client\Curl,
-    Buzz\Client\MultiCurl;
+use RMS\PushNotificationsBundle\Exception\InvalidMessageTypeException;
+use RMS\PushNotificationsBundle\Message\AndroidMessage;
+use RMS\PushNotificationsBundle\Message\MessageInterface;
+use Buzz\Browser;
+use Buzz\Client\AbstractCurl;
+use Buzz\Client\Curl;
+use Buzz\Client\MultiCurl;
 
 class AndroidGCMNotification implements OSNotificationServiceInterface
 {
@@ -102,12 +102,12 @@ class AndroidGCMNotification implements OSNotificationServiceInterface
             throw new InvalidMessageTypeException("Non-GCM messages not supported by the Android GCM sender");
         }
 
-        $headers = array(
+        $headers = [
             "Authorization: key=" . $this->apiKey,
             "Content-Type: application/json",
-        );
+        ];
         $data = array_merge(
-                $message->getGCMOptions(), array("data" => $message->getData())
+                $message->getGCMOptions(), ["data" => $message->getData()]
         );
 
         if ($this->useDryRun) {
@@ -115,28 +115,28 @@ class AndroidGCMNotification implements OSNotificationServiceInterface
         }
 
         // Perform the calls (in parallel)
-        $this->responses = array();
+        $this->responses = [];
         $this->registrationIds = [];
         $this->payloads = [];
         $gcmIdentifiers = $message->getGCMIdentifiers();
 
-        if (count($message->getGCMIdentifiers()) == 1) {
-            $data['to'] = $gcmIdentifiers[0];
-            $this->responses[] = $this->browser->post($this->apiURL, $headers, json_encode($data));
-        } else {
-            // Chunk number of registration IDs according to the maximum allowed by GCM
-            $chunks = array_chunk($message->getGCMIdentifiers(), $this->registrationIdMaxCount);
-            foreach ($chunks as $registrationIDs) {
-                $data['registration_ids'] = $registrationIDs;
-                $data['notification']['body'] = $message->getData()['message'];
+        // if (count($message->getGCMIdentifiers()) == 1) {
+        //     $data['to'] = $gcmIdentifiers[0];
+        //     $this->responses[] = $this->browser->post($this->apiURL, $headers, json_encode($data));
+        // } else {
+        // Chunk number of registration IDs according to the maximum allowed by GCM
+        $chunks = array_chunk($message->getGCMIdentifiers(), $this->registrationIdMaxCount);
+        foreach ($chunks as $registrationIDs) {
+            $data['registration_ids'] = $registrationIDs;
+            $data['notification']['body'] = $message->getData()['message'];
 //                $data['notification']['icon'] = '@drawable/ic_notification';
 //                $data['notification']['sound'] = 'default';
-                $data['priority'] = 'high';
-                $this->responses[] = $this->browser->post($this->apiURL, $headers, json_encode($data));
-                $this->registrationIds[] = $data['registration_ids'];
-                $this->payloads[] = $data['notification']['body'];
-            }
+            $data['priority'] = 'high';
+            $this->responses[] = $this->browser->post($this->apiURL, $headers, json_encode($data));
+            $this->registrationIds[] = $data['registration_ids'];
+            $this->payloads[] = $data['notification']['body'];
         }
+        //}
 
         // If we're using multiple concurrent connections via MultiCurl
         // then we should flush all requests
@@ -149,7 +149,7 @@ class AndroidGCMNotification implements OSNotificationServiceInterface
             $res = [
                 'success' => $message->success,
                 'failure' => $message->failure,
-                'message' => $this->payloads[$resKey],
+                'message' => isset($this->payloads[$resKey]) ? $this->payloads[$resKey] : null,
                 'errors' => []
             ];
             if ($message === null || $message->success == 0 || $message->failure > 0) {
@@ -181,5 +181,4 @@ class AndroidGCMNotification implements OSNotificationServiceInterface
     {
         return $this->responses;
     }
-
 }
