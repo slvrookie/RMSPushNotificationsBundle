@@ -13,7 +13,6 @@ use Buzz\Browser,
 
 class AndroidFCMNotification implements OSNotificationServiceInterface
 {
-
     /**
      * FCM endpoint
      *
@@ -87,6 +86,7 @@ class AndroidFCMNotification implements OSNotificationServiceInterface
      */
     public function send(MessageInterface $message)
     {
+//                dump($message);die;
         if (!$message instanceof AndroidMessage) {
             throw new InvalidMessageTypeException(sprintf("Message type '%s' not supported by FCM", get_class($message)));
         }
@@ -99,50 +99,66 @@ class AndroidFCMNotification implements OSNotificationServiceInterface
             "Content-Type: application/json",
         );
         $data = array_merge(
-            $message->getFCMOptions(),
-            array("data" => $message->getData())
+                $message->getFCMOptions(), array("data" => $message->getData())
         );
-        
+
         // Perform the calls (in parallel)
         $this->responses = array();
+        $this->registrationIds = [];
+        $this->payloads = [];
         $fcmIdentifiers = $message->getFCMIdentifiers();
 
-        if (count($message->getFCMIdentifiers()) == 1) {
-            $data['to'] = $fcmIdentifiers[0];
+
+//        if (count($message->getFCMIdentifiers()) == 1) {
+//            $data['to'] = $fcmIdentifiers[0];
+//            dump($this->apiURL, $headers, $data);
+//            $this->responses[] = $this->browser->post($this->apiURL, $headers, json_encode($data));
+//        } else {
+        // Chunk number of registration IDs according to the maximum allowed by FCM
+        $chunks = array_chunk($message->getFCMIdentifiers(), $this->registrationIdMaxCount);
+
+        foreach ($chunks as $registrationIDs) {
+            $data['registration_ids'] = $registrationIDs;
+            $data['notification']['body'] = $message->getData()['message'];
+//                $data['notification']['icon'] = '@drawable/ic_notification';
+//                $data['notification']['sound'] = 'default';
+            $data['priority'] = 'high';
             $this->responses[] = $this->browser->post($this->apiURL, $headers, json_encode($data));
-        } else {
-            // Chunk number of registration IDs according to the maximum allowed by FCM
-            $chunks = array_chunk($message->getFCMIdentifiers(), $this->registrationIdMaxCount);
-
-            foreach ($chunks as $registrationIDs) {
-                $data['registration_ids'] = $registrationIDs;
-                $this->responses[] = $this->browser->post($this->apiURL, $headers, json_encode($data));
-            }
+            $this->registrationIds[] = $data['registration_ids'];
+            $this->payloads[] = $data['notification']['body'];
         }
-
+//        }
         // If we're using multiple concurrent connections via MultiCurl
         // then we should flush all requests
         if ($this->browser->getClient() instanceof MultiCurl) {
             $this->browser->getClient()->flush();
         }
 
-        // Determine success
-        foreach ($this->responses as $response) {
+        foreach ($this->responses as $resKey => $response) {
             $message = json_decode($response->getContent());
+            $res = [
+                'success' => $message->success,
+                'failure' => $message->failure,
+                'message' => isset($this->payloads[$resKey]) ? $this->payloads[$resKey] : null,
+                'errors' => []
+            ];
             if ($message === null || $message->success == 0 || $message->failure > 0) {
                 if ($message == null) {
                     $this->logger->error($response->getContent());
                 } else {
-                    foreach ($message->results as $result) {
+                    foreach ($message->results as $errorKey => $result) {
                         if (isset($result->error)) {
+                            $res['errors'][] = [
+                                'error' => $result->error,
+                                'device_id' => $this->registrationIds[$resKey][$errorKey]
+                            ];
                             $this->logger->error($result->error);
                         }
                     }
                 }
-                return false;
+                return $res;
             }
         }
-
         return true;
     }
 
@@ -156,3 +172,4 @@ class AndroidFCMNotification implements OSNotificationServiceInterface
         return $this->responses;
     }
 }
+
